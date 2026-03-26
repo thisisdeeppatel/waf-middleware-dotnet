@@ -129,3 +129,6 @@
 /Users/deep/projects/personal/waf-dotnet/bin/Debug/net10.0/tr/Microsoft.CodeAnalysis.Workspaces.MSBuild.resources.dll
 /Users/deep/projects/personal/waf-dotnet/bin/Debug/net10.0/zh-Hans/Microsoft.CodeAnalysis.Workspaces.MSBuild.resources.dll
 /Users/deep/projects/personal/waf-dotnet/bin/Debug/net10.0/zh-Hant/Microsoft.CodeAnalysis.Workspaces.MSBuild.resources.dll
+/Users/deep/projects/personal/waf-dotnet/bin/Debug/net10.0/Pipelines.Sockets.Unofficial.dll
+/Users/deep/projects/personal/waf-dotnet/bin/Debug/net10.0/StackExchange.Redis.dll
+/Users/deep/projects/personal/waf-dotnet/bin/Debug/net10.0/System.IO.Hashing.dll
