@@ -7,7 +7,7 @@ public class VerifyEmailDto
     [Required(ErrorMessage = "Email is required")]
     [EmailAddress(ErrorMessage = "Email is invalid")]
     public string Email { get; set; } = default!;
-    
+
     [Required(ErrorMessage = "Token is required")]
     public string Token { get; set; } = default!;
 }

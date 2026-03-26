@@ -17,7 +17,7 @@ public class AuthController : ControllerBase
     {
         _authService = authService;
     }
-    
+
     [HttpPost("register")]
     public async Task<ActionResult<RegisterResponse>> Register(RegisterDto dto)
     {
@@ -35,7 +35,7 @@ public class AuthController : ControllerBase
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
-    
+
     [HttpPost("login")]
     public async Task<ActionResult<LoginResponse>> Login(LoginDto dto)
     {
@@ -53,7 +53,7 @@ public class AuthController : ControllerBase
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
-    
+
     [HttpPost("forgot-password")]
     public async Task<ActionResult<ForgotPasswordResponse>> ForgotPassword(ForgotPasswordDto dto)
     {
@@ -71,7 +71,7 @@ public class AuthController : ControllerBase
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
-    
+
     [HttpPost("reset-password")]
     public async Task<ActionResult<ResetPasswordResponse>> ResetPassword(ResetPasswordDto dto)
     {
@@ -93,7 +93,7 @@ public class AuthController : ControllerBase
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
-    
+
     [HttpPost("verify-email")]
     public async Task<ActionResult<VerifyEmailResponse>> VerifyEmail(VerifyEmailDto dto)
     {
@@ -115,7 +115,7 @@ public class AuthController : ControllerBase
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
-    
+
     [HttpPost("resend-verification-email")]
     public async Task<ActionResult<VerifyEmailResponse>> ResendVerificationEmail(ResendVerificationDto dto)
     {
@@ -137,7 +137,7 @@ public class AuthController : ControllerBase
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
-    
+
     [HttpGet("me")]
     [Authorize]
     public async Task<ActionResult<UserProfileResponse>> GetUserProfile()
@@ -149,7 +149,7 @@ public class AuthController : ControllerBase
             {
                 return Unauthorized("User ID not found in token");
             }
-            
+
             var result = await _authService.GetUserProfileAsync(userId);
             return Ok(result);
         }

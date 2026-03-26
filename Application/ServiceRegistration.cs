@@ -9,7 +9,7 @@ public static class ServiceRegistration
     {
         services.AddSingleton<FirewallService>();
         services.AddScoped<Auth.AuthService>();
-        
+
         return services;
     }
 }

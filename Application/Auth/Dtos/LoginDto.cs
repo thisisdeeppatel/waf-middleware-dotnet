@@ -4,10 +4,10 @@ namespace backend.Application.Auth.Dtos;
 
 public class LoginDto
 {
-    [Required(ErrorMessage =  "Email is required")]
+    [Required(ErrorMessage = "Email is required")]
     [EmailAddress(ErrorMessage = "Email is invalid")]
-    public string? Email { get; set; } = null ;
-    
+    public string? Email { get; set; } = null;
+
     [Required(ErrorMessage = "Password is required")]
     [DataType(DataType.Text)]
     [MinLength(6, ErrorMessage = "Password must have at least 6 characters")]

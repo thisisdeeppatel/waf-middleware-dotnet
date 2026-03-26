@@ -7,7 +7,7 @@ public class RegisterDto
     [Required(ErrorMessage = "Email is required")]
     [EmailAddress(ErrorMessage = "Email is invalid")]
     public string Email { get; set; } = default!;
-    
+
     [Required(ErrorMessage = "Password is required")]
     [DataType(DataType.Password)]
     [MinLength(6, ErrorMessage = "Password must have at least 6 characters")]

@@ -39,7 +39,7 @@ public class AuthService
             await _userManager.AddToRoleAsync(user, "Admin");
         }
 
-       
+
         var emailConfirmationToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         _logger.LogInformation("Email confirmation token for {Email}: {Token}", user.Email, emailConfirmationToken);
 
@@ -52,9 +52,9 @@ public class AuthService
         {
             throw new UnauthorizedAccessException("Invalid credentials");
         }
-        
+
         var user = await _userManager.FindByEmailAsync(dto.Email);
-        
+
         if (user == null || !await _userManager.CheckPasswordAsync(user, dto.Password))
         {
             throw new UnauthorizedAccessException("Invalid credentials");
@@ -88,7 +88,7 @@ public class AuthService
     public async Task<ForgotPasswordResponse> ForgotPasswordAsync(ForgotPasswordDto dto)
     {
         var user = await _userManager.FindByEmailAsync(dto.Email);
-        
+
         if (user == null)
         {
             throw new KeyNotFoundException("User not found");
@@ -102,7 +102,7 @@ public class AuthService
     public async Task<ResetPasswordResponse> ResetPasswordAsync(ResetPasswordDto dto)
     {
         var user = await _userManager.FindByEmailAsync(dto.Email);
-        
+
         if (user == null)
         {
             throw new KeyNotFoundException("User not found");
@@ -124,7 +124,7 @@ public class AuthService
     public async Task<VerifyEmailResponse> VerifyEmailAsync(string email, string token)
     {
         var user = await _userManager.FindByEmailAsync(email);
-        
+
         if (user == null)
         {
             throw new KeyNotFoundException("User not found");
@@ -136,7 +136,7 @@ public class AuthService
         }
 
         var result = await _userManager.ConfirmEmailAsync(user, token);
-        
+
         if (!result.Succeeded)
         {
             var errors = string.Join(", ", result.Errors.Select(e => e.Description));
@@ -149,7 +149,7 @@ public class AuthService
     public async Task<VerifyEmailResponse> ResendVerificationEmailAsync(string email)
     {
         var user = await _userManager.FindByEmailAsync(email);
-        
+
         if (user == null)
         {
             throw new KeyNotFoundException("User not found");
@@ -169,14 +169,14 @@ public class AuthService
     public async Task<UserProfileResponse> GetUserProfileAsync(string userId)
     {
         var user = await _userManager.FindByIdAsync(userId);
-        
+
         if (user == null)
         {
             throw new KeyNotFoundException("User not found");
         }
 
         var roles = await _userManager.GetRolesAsync(user);
-        
+
         return new UserProfileResponse
         {
             Id = user.Id,

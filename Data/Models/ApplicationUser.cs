@@ -21,7 +21,7 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
         // 
         // builder.Property(x => x.CreatedAt)
         //     .IsRequired();
-        
+
         // Configure relationships if needed
         // Example:
         // builder.HasMany<Todo>()
