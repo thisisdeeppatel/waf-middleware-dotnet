@@ -31,4 +31,14 @@ public class RedisService
     {
         await _db.KeyDeleteAsync(key);
     }
+
+    public async Task<bool> KeyExistsAsync(string key) => await _db.KeyExistsAsync(key);
+
+    public async Task<long> StringIncrementAsync(string key, TimeSpan? expire = null)
+    {
+        var value = await _db.StringIncrementAsync(key);
+        if (value == 1 && expire is { } ttl && ttl > TimeSpan.Zero)
+            await _db.KeyExpireAsync(key, ttl);
+        return value;
+    }
 }

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using backend.Core.Connections;
+using backend.Core.FirewallEngine;
 var builder = WebApplication.CreateBuilder(args);
 
 var jwt = builder.Configuration.GetSection("Jwt");
@@ -16,7 +17,12 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddApplicationServices();
 
+builder.Services.Configure<FirewallOptions>(builder.Configuration.GetSection(FirewallOptions.SectionName));
+
 builder.Services.AddSingleton(new RedisService("127.0.0.1:6379"));
+builder.Services.AddSingleton<FirewallScoringEngine>();
+builder.Services.AddSingleton<FirewallService>();
+builder.Services.AddTransient<WAFMiddleware>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
@@ -52,6 +58,8 @@ builder.Services.AddAuthentication(options =>
     });
 
 var app = builder.Build();
+
+app.UseMiddleware<WAFMiddleware>();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
