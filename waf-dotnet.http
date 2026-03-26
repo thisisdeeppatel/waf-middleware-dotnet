@@ -1,0 +1,6 @@
+@waf_dotnet_HostAddress = http://localhost:5232
+
+GET {{waf_dotnet_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
