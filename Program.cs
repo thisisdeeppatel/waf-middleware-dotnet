@@ -56,18 +56,20 @@ builder.Services.AddAuthentication(options =>
             )
         };
     });
-
 var app = builder.Build();
 
 app.UseMiddleware<WAFMiddleware>();
 
-// Configure the HTTP request pipeline.
+app.UseHttpsRedirection();
+app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization();
+
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi(); /// http://host:port/openapi/v1.json
+    app.MapOpenApi(); // e.g. /openapi/v1.json
 }
 
-app.UseHttpsRedirection();
-
+app.MapControllers();
 
 app.Run();

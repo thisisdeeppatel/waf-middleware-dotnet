@@ -132,3 +132,5 @@
 /Users/deep/projects/personal/waf-dotnet/bin/Debug/net10.0/Pipelines.Sockets.Unofficial.dll
 /Users/deep/projects/personal/waf-dotnet/bin/Debug/net10.0/StackExchange.Redis.dll
 /Users/deep/projects/personal/waf-dotnet/bin/Debug/net10.0/System.IO.Hashing.dll
+/Users/deep/projects/personal/waf-dotnet/bin/Debug/net10.0/package-lock.json
+/Users/deep/projects/personal/waf-dotnet/bin/Debug/net10.0/package.json

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("waf-dotnet")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+29f6352a7a98853df98987cb938a39d186a64991")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+dc909d011bf3b5d789211db477ef38e0204a05e1")]
 [assembly: System.Reflection.AssemblyProductAttribute("waf-dotnet")]
 [assembly: System.Reflection.AssemblyTitleAttribute("waf-dotnet")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

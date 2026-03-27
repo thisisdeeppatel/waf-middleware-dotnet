@@ -162,4 +162,10 @@ public class AuthController : ControllerBase
             return StatusCode(500, "An error occurred while processing your request");
         }
     }
+
+    [HttpGet("test-waf")]
+    public async Task<ActionResult<string>> TestWAF()
+    {
+        return Ok("WAF test successful");
+    }
 }
