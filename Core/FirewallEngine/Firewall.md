@@ -1,70 +1,95 @@
-# Firewall (WAF) — how it works
+# Firewall (WAF)
 
-`WAFMiddleware` plus `FirewallService` decide per request: **continue the pipeline** or **403 / 429**. Tunables live in **`FirewallOptions`** (config section **`Firewall`** in `appsettings.json`).
+**What it does:** `WAFMiddleware` and `FirewallService` decide each request: run the pipeline, return **403**, or return **429**. Behavior is driven by **`FirewallOptions`** (bound from the **`Firewall`** section in `appsettings.json`).
 
----
-
-## 1. Big picture
-
-1. If the path matches an **exempt prefix** (`ExemptPathPrefixes`) → **firewall skipped**, `next` runs.
-2. Otherwise middleware builds **`FirewallRequestDto`** (path, IP, UA, headers, **partner flag** from API key header).
-3. **`FirewallScoringEngine`** returns a **risk score 0–100** and whether the client is a **trusted bot** (whitelist UA substring match).
-4. **`FirewallService`** uses fingerprint → **Redis block** → **trusted-bot bypass** (no rate limit) → **score threshold block** → **Redis rate limit** (separate counters for **partner** vs **anonymous** caps).
-5. On **Block** or **Throttle**, a structured **`FirewallAuditRecord`** is logged (IP, path, reason, score, factors) — ready to map to a DB row later.
+**At a glance:** exempt paths skip everything. Everyone else gets a risk score (0–100), then Redis blocklist, trusted-bot short-circuit, score threshold, and tiered rate limits. **Blocks and throttles only** run enforcement logging: a **`FirewallAuditRecord`** is assembled for structured logs, an **`AccessLog`** row is written when the database succeeds, and a warning is always emitted. Allows do not hit this path.
 
 ---
 
-## 2. Middleware (`WAFMiddleware`)
+## Request path
 
-| Step | What happens |
-|------|----------------|
-| 1 | **Exempt paths** — prefix match (`StartsWithSegments`), case-insensitive → `next` only. |
-| 2 | **DTO** — path, IP, `User-Agent`, `Accept`, `Accept-Encoding`, **`IsPartner`** if the partner header value (trimmed) exactly matches a **non-empty** entry in `PartnerApiKeys` (each entry trimmed). |
-| 3 | **`GetImmediateDecisionAsync`** — if **Allow**, `next`; else write small 403/429 body (**no `next`**). |
+| Stage | Outcome |
+|--------|---------|
+| Exempt prefix | `ExemptPathPrefixes` → middleware calls `next` only; no scoring, no Redis. Empty or whitespace entries in the list are skipped. Prefix match uses `PathString.StartsWithSegments` (case-insensitive). |
+| Build context | `FirewallRequestDto`: path string from `Request.Path.Value` (or `""` if null), IP from `Connection.RemoteIpAddress`, first non-empty segment for `User-Agent` / `Accept` / `Accept-Encoding`, **`IsPartner`** when the configured partner header (trimmed) exactly equals a non-empty trimmed entry in `PartnerApiKeys`. |
+| Decision | `GetImmediateDecisionAsync` respects **`CancellationToken`** (`ThrowIfCancellationRequested` at entry). **Allow** → `await next(context)`; rejections **never** call `next` (auth, controllers, and later middleware do not run). |
 
-**Fingerprint hashing** (`GenerateFingerprint`) uses **only** IP + `User-Agent` + `Accept` + `Accept-Encoding` (not path, not partner flag). **Blocklist** keys use that hash alone. **Rate-limit** keys add a tier suffix (`:p` / `:a`) so partner and anonymous traffic do not share the same counter.
-
----
-
-## 3. Scoring (`FirewallScoringEngine`)
-
-- **Blacklist** UA substring (from options) → **risk 100** (blocked if ≥ threshold unless handled earlier by Redis — see service order).
-- **Whitelist** UA substring (e.g. Google/OpenAI crawlers) → **trusted bot**, **risk 0**, no rate-limit increments.
-- Otherwise: **empty UA** adds risk; **partner API key** reduces risk. Result clamped **0–100**.
-
-Threshold **`RiskScoreBlockThreshold`** (default **75**) triggers a **block** with reason **`risk_score`** or **`blacklisted_bot`** (when the factor comes from the UA blacklist).
+**Fingerprint** (`GenerateFingerprint`): concatenate **`{RemoteIp}|{UserAgent}|{Accept}|{AcceptEncoding}`** (same field order as the DTO; a null `RemoteIp` contributes an **empty** segment—C# string interpolation does not emit `"null"`). UTF-8 bytes → **SHA-256** → **`Convert.ToHexString`** (64 hex chars). Path and partner flag are **not** inputs. Block keys use this value; rate keys append **`:p`** or **`:a`**.
 
 ---
 
-## 4. Service order (`FirewallService.GetImmediateDecisionAsync`)
+## Scoring (`FirewallScoringEngine`)
 
-1. Evaluate score (once).
-2. Fingerprint for Redis keys.
-3. **Redis `waf:block:{fingerprint}`** → block, reason **`redis_blocklist`**, **log**.
-4. **Trusted bot** → **Allow** (no Redis rate increment).
-5. **Risk ≥ threshold** → block, **log**.
-6. **`INCR` `waf:rl:{fingerprint}:p`** or **`waf:rl:{fingerprint}:a`** with **`RateWindow`** TTL on first hit (TTL applied only if the window is **> 0**; if `RateWindow` is invalid, expiry uses **1 minute**). Compare count to **`MaxRequestsPerWindowPartner`** or **`MaxRequestsPerWindowAnonymous`** → throttle when over cap, **log**.
+Evaluation is a single pass over options lists; **order matters**.
 
----
+1. **Blacklist** (`BotUserAgentBlacklistSubstrings`): first **non-empty** substring that the UA contains (case-insensitive) → score **100**, not trusted, factor `blacklisted_bot:{substring}` → return immediately.
+2. **Whitelist** (`BotUserAgentWhitelistSubstrings`): same rule, first match → score **0**, **`TrustedBot: true`**, factor `whitelisted_bot:{substring}` → return.
+3. **Heuristic branch:** start at **0**. If UA is null/whitespace → **+30**, factor `empty_user_agent`. If **`IsPartner`** → factor `partner_api_key`, score becomes **`max(0, score - 25)`**. Final score **`Clamp(0, 100)`**.
 
-## 5. Redis keys
+So a blacklisted UA never consults the whitelist; whitelist wins only when no blacklist rule matched.
 
-| Key | Role |
-|-----|------|
-| `waf:block:{fingerprint}` | Exists → **403** (`redis_blocklist`). |
-| `waf:rl:{fingerprint}:a` | Anonymous tier: counter + TTL window → **429** when over **`MaxRequestsPerWindowAnonymous`**. |
-| `waf:rl:{fingerprint}:p` | Partner tier: same, cap **`MaxRequestsPerWindowPartner`**. |
+**Threshold block** (`RiskScoreBlockThreshold`, default **75**): if score ≥ threshold, block reason is **`blacklisted_bot`** when **any** factor starts with **`blacklisted_bot:`** (ordinal); otherwise **`risk_score`**.
 
 ---
 
-## 6. Configuration
+## Decision order (`FirewallService.GetImmediateDecisionAsync`)
 
-See **`FirewallOptions`** and **`appsettings.json` → `Firewall`**: exempt paths, partner header name and keys, rate limits, retry-after, threshold, whitelist/blacklist substrings.
+The first step that commits an outcome wins; later steps are skipped.
+
+1. Compute **`FirewallScoreSnapshot`** once (drives threshold, reasons, and audit fields).
+2. Compute fingerprint string.
+3. **`waf:block:{fingerprint}`** exists → **403**, **`redis_blocklist`**, enforcement log. **Runs before trusted-bot bypass** so operations can block a fingerprint even if the UA would qualify as a trusted crawler.
+4. **`TrustedBot`** → **Allow**; **no** Redis rate counter increment.
+5. Score ≥ **`RiskScoreBlockThreshold`** → **403**, enforcement log (reason as above).
+6. Rate limit: resolve cap from **`MaxRequestsPerWindowPartner`** vs **`MaxRequestsPerWindowAnonymous`** using **`IsPartner`**. **`INCR`** the tier key; window length is **`RateWindow`** if it is **> 0**, else **1 minute**. After increment, if count **`>`** cap (strictly greater) → **429**, reason **`rate_limited`**, enforcement log, retry-after from **`ThrottleRetryAfterSeconds`**. Otherwise **Allow**.
+
+**Redis counter TTL:** on **`StringIncrementAsync`**, expiry is applied **only when the new value is 1** and the chosen window is **> 0**—that establishes the sliding window anchor on the first hit in a new key lifetime.
 
 ---
 
-## 7. Operational notes
+## Redis keys
 
-- **Proxies:** real client IP may need forwarded headers before fingerprint matches reality.
-- **Fingerprint contract:** changing DTO fields used in **`GenerateFingerprint`** changes **blocklist** keys and the base of **rate** keys. Tier suffixes (`:p` / `:a`) are fixed in code.
-- **Partner key:** header value is **trimmed** and must **exactly match** a **non-empty** `PartnerApiKeys` entry after trim (case-sensitive).
+| Key | Effect |
+|-----|--------|
+| `waf:block:{fingerprint}` | Key exists → **403** (`redis_blocklist`). Value is irrelevant; presence is the signal. |
+| `waf:rl:{fingerprint}:a` | Anonymous tier string counter; **429** when count **>** **`MaxRequestsPerWindowAnonymous`**. |
+| `waf:rl:{fingerprint}:p` | Partner tier; **429** when count **>** **`MaxRequestsPerWindowPartner`**. |
+
+---
+
+## Enforcement logging (blocks and throttles)
+
+For **`redis_blocklist`**, score-based blocks, and **`rate_limited`**:
+
+- Build **`FirewallAuditRecord`** (timestamp UTC, kind `Block` / `Throttle`, IP, path, reason, risk score, UA, factors).
+- **Persist:** insert **`AccessLog`** (factors stored as JSON via **`JsonSerializer.Serialize`** on the factor list, **`SignatureHash`** = fingerprint). DB errors are caught, **`LogError`** is called, and the HTTP decision is **unchanged**.
+- **Always** emit a structured **`LogWarning`** with the audit fields.
+
+Allows skip this entire block.
+
+---
+
+## HTTP responses (middleware)
+
+| Action | Status | Body | Notes |
+|--------|--------|------|--------|
+| Block | **403** | `Forbidden` | **`ContentLength`** 9 (ASCII byte count). |
+| Throttle | **429** | `Too Many Requests` | **`ContentLength`** 17; **`Retry-After`** header set to **`ThrottleRetryAfterSeconds`** as a string. |
+
+---
+
+## Configuration
+
+See **`FirewallOptions`** and **`appsettings.json` → `Firewall`**: exempt paths, partner header name and keys, rate limits, **`ThrottleRetryAfterSeconds`**, threshold, whitelist/blacklist substrings. Defaults for exempt prefixes and crawler whitelist exist in code if not overridden.
+
+---
+
+## Operations
+
+**Proxies:** the IP in the DTO should reflect the real client; if you terminate TLS or sit behind a proxy, forwarded headers must be applied *before* this middleware or fingerprints and blocks will not line up with clients.
+
+**Fingerprint changes:** any change to the raw string format, field order, or hashing in **`GenerateFingerprint`** changes all derived Redis keys until TTL expiry or manual deletion. Tier suffixes **`:p`** / **`:a`** are fixed in code.
+
+**Partner keys:** comparison is trimmed, exact, and case-sensitive against non-empty trimmed entries in **`PartnerApiKeys`**.
+
+**Pipeline placement:** `WAFMiddleware` is registered early (before auth and endpoints in **`Program.cs`**); that is what makes exempt paths cheap and rejections invisible to application code.
