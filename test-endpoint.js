@@ -133,6 +133,8 @@ async function runAll() {
 
 // Uncomment one:
 //baseline();
-// asTrustedCrawler();
+//asTrustedCrawler();
 //emptyUserAgent();
 // runAll();
+
+highConcurrency();

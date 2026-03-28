@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
+using Microsoft.Net.Http.Headers;
 
 namespace backend.Core.FirewallEngine;
 
@@ -65,10 +66,23 @@ public sealed class WAFMiddleware : IMiddleware
         return new FirewallRequestDto(
             context.Request.Path.Value ?? "",
             context.Connection.RemoteIpAddress?.ToString(),
-            headers["User-Agent"].ToString(),
-            headers["Accept"].ToString(),
-            headers["Accept-Encoding"].ToString(),
+            GetFirstHeaderValue(headers, HeaderNames.UserAgent),
+            GetFirstHeaderValue(headers, HeaderNames.Accept),
+            GetFirstHeaderValue(headers, HeaderNames.AcceptEncoding),
             isPartner);
+    }
+
+    private static string GetFirstHeaderValue(IHeaderDictionary headers, string headerName)
+    {
+        if (!headers.TryGetValue(headerName, out var values))
+            return string.Empty;
+        foreach (var segment in values)
+        {
+            if (!string.IsNullOrEmpty(segment))
+                return segment;
+        }
+
+        return string.Empty;
     }
 
     // ASCII bodies only here: ContentLength must equal the exact byte length written.

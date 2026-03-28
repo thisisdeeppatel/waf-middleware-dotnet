@@ -5,6 +5,11 @@
 
 # dotenv files
 .env
+.env.local
+.env.*.local
+
+# Local config overrides (secrets / machine-specific)
+appsettings.*.local.json
 
 # User-specific files
 *.rsuser
@@ -480,4 +485,3 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
-obj

@@ -1,4 +1,3 @@
-using backend.Data;
 using backend.Data.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -10,6 +9,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
     { }
+
+    public DbSet<AccessLog> AccessLogs => Set<AccessLog>();
 
 
     protected override void OnModelCreating(ModelBuilder builder)

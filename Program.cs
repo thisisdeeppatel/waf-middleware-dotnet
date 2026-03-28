@@ -19,15 +19,19 @@ builder.Services.AddApplicationServices();
 
 builder.Services.Configure<FirewallOptions>(builder.Configuration.GetSection(FirewallOptions.SectionName));
 
-builder.Services.AddSingleton(new RedisService("127.0.0.1:6379"));
+var redisConnection = builder.Configuration.GetConnectionString("Redis")
+    ?? throw new InvalidOperationException("Connection string 'Redis' is not configured.");
+builder.Services.AddSingleton(new RedisService(redisConnection));
 builder.Services.AddSingleton<FirewallScoringEngine>();
 builder.Services.AddSingleton<FirewallService>();
 builder.Services.AddTransient<WAFMiddleware>();
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-{
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
-});
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddDbContext<ApplicationDbContext>(
+    options => options.UseNpgsql(connectionString),
+    contextLifetime: ServiceLifetime.Scoped,
+    optionsLifetime: ServiceLifetime.Singleton);
+builder.Services.AddDbContextFactory<ApplicationDbContext>(options => options.UseNpgsql(connectionString));
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()

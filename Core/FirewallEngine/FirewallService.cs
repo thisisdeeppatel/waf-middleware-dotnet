@@ -1,6 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using backend.Core.Connections;
+using backend.Data;
+using backend.Data.Models;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -11,6 +15,7 @@ public sealed class FirewallService
     private readonly RedisService _redis;
     private readonly FirewallOptions _opt;
     private readonly FirewallScoringEngine _scoring;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbFactory;
     private readonly ILogger<FirewallService> _logger;
 
     private const string BlockKeyPrefix = "waf:block:";
@@ -20,11 +25,13 @@ public sealed class FirewallService
         IOptions<FirewallOptions> options,
         RedisService redis,
         FirewallScoringEngine scoring,
+        IDbContextFactory<ApplicationDbContext> dbFactory,
         ILogger<FirewallService> logger)
     {
         _opt = options.Value;
         _redis = redis;
         _scoring = scoring;
+        _dbFactory = dbFactory;
         _logger = logger;
     }
 
@@ -53,7 +60,7 @@ public sealed class FirewallService
         // Ops-controlled deny — still evaluated before trusted-bot bypass so you can override crawlers if needed.
         if (await IsOnBlocklistAsync(clientId))
         {
-            LogEnforcement("Block", request, score, "redis_blocklist");
+            await LogEnforcementAsync("Block", request, score, "redis_blocklist", clientId, cancellationToken);
             return FirewallDecision.Block("redis_blocklist");
         }
 
@@ -66,7 +73,7 @@ public sealed class FirewallService
             var reason = score.Factors.Any(f => f.StartsWith("blacklisted_bot:", StringComparison.Ordinal))
                 ? "blacklisted_bot"
                 : "risk_score";
-            LogEnforcement("Block", request, score, reason);
+            await LogEnforcementAsync("Block", request, score, reason, clientId, cancellationToken);
             return FirewallDecision.Block(reason);
         }
 
@@ -77,18 +84,24 @@ public sealed class FirewallService
         var requestsInWindow = await IncrementRequestCountInWindowAsync(clientId, request.IsPartner);
         if (requestsInWindow > maxAllowed)
         {
-            LogEnforcement("Throttle", request, score, "rate_limited");
+            await LogEnforcementAsync("Throttle", request, score, "rate_limited", clientId, cancellationToken);
             return FirewallDecision.Throttle("rate_limited", _opt.ThrottleRetryAfterSeconds);
         }
 
         return FirewallDecision.Allow();
     }
 
-    private void LogEnforcement(string kind, FirewallRequestDto dto, FirewallScoreSnapshot score, string reason)
+    private async Task LogEnforcementAsync(
+        string kind,
+        FirewallRequestDto dto,
+        FirewallScoreSnapshot score,
+        string reason,
+        string signatureHash,
+        CancellationToken cancellationToken)
     {
-        // Immutable snapshot: append-only DB row can mirror this 1:1 later.
+        var now = DateTimeOffset.UtcNow;
         var audit = new FirewallAuditRecord(
-            DateTimeOffset.UtcNow,
+            now,
             kind,
             dto.RemoteIp,
             dto.Path,
@@ -97,13 +110,35 @@ public sealed class FirewallService
             dto.UserAgent,
             score.Factors);
 
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
+            db.AccessLogs.Add(new AccessLog
+            {
+                Ip = dto.RemoteIp,
+                UserAgent = dto.UserAgent ?? string.Empty,
+                Path = dto.Path,
+                RiskScore = score.RiskScore,
+                Factors = JsonSerializer.Serialize(score.Factors),
+                SignatureHash = signatureHash,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to persist AccessLog for firewall enforcement");
+        }
+
         _logger.LogWarning(
-            "Firewall {EnforcementKind} IP={RemoteIp} Path={Path} Reason={Reason} RiskScore={RiskScore} Factors={Factors}",
+            "Firewall {EnforcementKind} IP={RemoteIp} Path={Path} Reason={Reason} RiskScore={RiskScore} UserAgent={UserAgent} Factors={Factors}",
             audit.EnforcementKind,
             audit.RemoteIp,
             audit.Path,
             audit.Reason,
             audit.RiskScore,
+            audit.UserAgent ?? "",
             string.Join(',', audit.ScoreFactors));
     }
 
